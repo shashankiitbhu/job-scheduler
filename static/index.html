@@ -249,3 +249,90 @@
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-gray-500">Type</p>
+                                <p class="mt-1">${job.type === 'cron' ? 'Scheduled (Cron)' : 'One-time'}</p>
+                            </div>
+                            ${job.type === 'cron' ? `
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Schedule</p>
+                                <p class="mt-1 font-mono text-sm">${job.schedule}</p>
+                            </div>
+                            ` : ''}
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Created</p>
+                                <p class="mt-1">${createdAt}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Started</p>
+                                <p class="mt-1">${startedAt}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Finished</p>
+                                <p class="mt-1">${finishedAt}</p>
+                            </div>
+                        </div>
+                        ${job.output || job.error ? `
+                        <div class="mt-6">
+                            <p class="text-sm font-medium text-gray-500">Result</p>
+                            <div class="mt-2 p-4 bg-gray-50 rounded-md overflow-auto max-h-64">
+                                ${job.output ? `
+                                <div class="mb-2">
+                                    <p class="text-xs text-gray-500">Output:</p>
+                                    <pre class="text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(job.output)}</pre>
+                                </div>
+                                ` : ''}
+                                ${job.error ? `
+                                <div>
+                                    <p class="text-xs text-red-500">Error:</p>
+                                    <pre class="text-sm text-red-800 whitespace-pre-wrap">${escapeHtml(job.error)}</pre>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ` : ''}
+                    `;
+                    
+                    // Show the modal
+                    document.getElementById('jobModal').classList.remove('hidden');
+                })
+                .catch(error => {
+                    console.error('Error loading job details:', error);
+                    alert('Error loading job details');
+                });
+            }
+            
+            // Close modal
+            document.getElementById('closeModal').addEventListener('click', function() {
+                document.getElementById('jobModal').classList.add('hidden');
+            });
+            
+            // Close modal when clicking outside
+            document.getElementById('jobModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.add('hidden');
+                }
+            });
+            
+            // Helper function to escape HTML
+            function escapeHtml(unsafe) {
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+            
+            // Helper function to capitalize first letter
+            function capitalizeFirstLetter(string) {
+                return string.charAt(0).toUpperCase() + string.slice(1);
+            }
+            
+            // Auto-refresh job list every 5 seconds
+            setInterval(loadJobs, 5000);
+            
+            // Initial load
+            loadJobs();
+        });
+    </script>
+</body>
+</html>
