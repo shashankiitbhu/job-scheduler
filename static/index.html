@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Job Scheduler</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .job-row:hover {
+            background-color: #f8fafc;
+        }
+        .status-pending {
+            color: #718096;
+            background-color: #EDF2F7;
+        }
+        .status-running {
+            color: #2C5282;
+            background-color: #EBEFFF;
+        }
+        .status-completed {
+            color: #22543D;
+            background-color: #C6F6D5;
+        }
+        .status-failed {
+            color: #9B2C2C;
+            background-color: #FED7D7;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto p-4">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Go Job Scheduler</h1>
+            <p class="text-gray-600">Submit and monitor distributed jobs</p>
+        </header>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Job Form -->
+            <div class="md:col-span-1 bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Submit a New Job</h2>
+                <form id="jobForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="command">
+                            Command
+                        </label>
+                        <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="command" type="text" placeholder="ls -la" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="jobType">
+                            Job Type
+                        </label>
+                        <select class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="jobType" required>
+                            <option value="once">One-time</option>
+                            <option value="cron">Scheduled (Cron)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-4 hidden" id="scheduleField">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="schedule">
+                            Cron Schedule
+                        </label>
+                        <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="schedule" type="text" placeholder="* * * * * *">
+                        <p class="text-xs text-gray-500 mt-1">Format: sec min hour day month weekday</p>
+                    </div>
+                    
+                    <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="submit">
+                        Submit Job
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Job List -->
+            <div class="md:col-span-2 bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Job List</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Command</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobList" class="bg-white divide-y divide-gray-200">
+                            <!-- Jobs will be populated here -->
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading jobs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Job Details Modal -->
+        <div id="jobModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center hidden">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-medium">Job Details</h3>
+                    <button id="closeModal" class="text-gray-500 hover:text-gray-700">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="jobDetails" class="space-y-4">
+                    <!-- Job details will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show/hide schedule field based on job type
+            document.getElementById('jobType').addEventListener('change', function() {
+                const scheduleField = document.getElementById('scheduleField');
+                if (this.value === 'cron') {
+                    scheduleField.classList.remove('hidden');
+                    document.getElementById('schedule').setAttribute('required', 'required');
+                } else {
+                    scheduleField.classList.add('hidden');
+                    document.getElementById('schedule').removeAttribute('required');
+                }
+            });
+            
+            // Form submission
+            document.getElementById('jobForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const command = document.getElementById('command').value;
+                const type = document.getElementById('jobType').value;
+                const schedule = document.getElementById('schedule').value;
+                
+                // Validate form
+                if (type === 'cron' && !schedule) {
+                    alert('Cron schedule is required for scheduled jobs');
+                    return;
+                }
+                
+                // Submit job
+                fetch('/api/jobs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        command,
+                        type,
+                        schedule: type === 'cron' ? schedule : ''
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => {
+                            throw new Error(err.error || 'Failed to create job');
+                        });
+                    }
+                    return response.json();
+                })
+                .then(job => {
+                    console.log('Job created:', job);
+                    document.getElementById('command').value = '';
+                    document.getElementById('schedule').value = '';
+                    loadJobs();
+                })
+                .catch(error => {
+                    alert('Error: ' + error.message);
+                });
+            });
+            
+            // Load jobs
+            function loadJobs() {
+                fetch('/api/jobs')
+                .then(response => response.json())
+                .then(jobs => {
+                    const jobList = document.getElementById('jobList');
+                    
+                    if (jobs.length === 0) {
+                        jobList.innerHTML = `
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">No jobs found</td>
+                            </tr>
+                        `;
+                        return;
+                    }
+                    
+                    // Sort jobs by creation time (newest first)
+                    jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                    
+                    jobList.innerHTML = jobs.map(job => `
+                        <tr class="job-row hover:bg-gray-50" data-id="${job.id}">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${job.id.substring(0, 8)}...</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(job.command.length > 30 ? job.command.substring(0, 30) + '...' : job.command)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                ${job.type === 'cron' ? `<span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800">Cron</span>` : `<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Once</span>`}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full status-${job.status}">${capitalizeFirstLetter(job.status)}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <button class="text-blue-600 hover:text-blue-900 view-job">View</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                    
+                    // Add click handlers for view buttons
+                    document.querySelectorAll('.view-job').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const jobId = this.closest('tr').dataset.id;
+                            viewJobDetails(jobId);
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading jobs:', error);
+                });
+            }
+            
+            // View job details
+            function viewJobDetails(jobId) {
+                fetch(`/api/jobs/${jobId}`)
+                .then(response => response.json())
+                .then(job => {
+                    const jobDetails = document.getElementById('jobDetails');
+                    
+                    let createdAt = new Date(job.created_at).toLocaleString();
+                    let startedAt = job.started_at ? new Date(job.started_at).toLocaleString() : 'N/A';
+                    let finishedAt = job.finished_at ? new Date(job.finished_at).toLocaleString() : 'N/A';
+                    
+                    jobDetails.innerHTML = `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">ID</p>
+                                <p class="mt-1">${job.id}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Status</p>
+                                <p class="mt-1">
+                                    <span class="px-2 py-1 text-xs rounded-full status-${job.status}">${capitalizeFirstLetter(job.status)}</span>
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Command</p>
+                                <p class="mt-1 font-mono text-sm">${escapeHtml(job.command)}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Type</p>
