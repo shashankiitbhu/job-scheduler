@@ -27,6 +27,7 @@ func main() {
 	defer redisClient.Close()
 
 	
+	
 	jobService := NewJobService(redisClient)
 
 	if config.WorkerMode {

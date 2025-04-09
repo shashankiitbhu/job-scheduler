@@ -7,13 +7,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Server handles HTTP requests
 type Server struct {
 	jobService *JobService
 	port       int
 }
 
-// NewServer creates a new HTTP server
 func NewServer(jobService *JobService, port int) *Server {
 	return &Server{
 		jobService: jobService,
@@ -21,20 +19,16 @@ func NewServer(jobService *JobService, port int) *Server {
 	}
 }
 
-// Start starts the HTTP server
 func (s *Server) Start() error {
 	router := gin.Default()
 	
-	// Enable serving static files
 	router.Static("/static", "./static")
 	
-	// Serve the frontend
 	router.LoadHTMLFiles("static/index.html")
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", nil)
 	})
 	
-	// API routes
 	api := router.Group("/api")
 	{
 		api.POST("/jobs", s.createJob)
@@ -45,7 +39,6 @@ func (s *Server) Start() error {
 	return router.Run(fmt.Sprintf(":%d", s.port))
 }
 
-// createJob handles the POST /api/jobs endpoint
 func (s *Server) createJob(c *gin.Context) {
 	var request struct {
 		Command  string `json:"command" binding:"required"`
@@ -58,7 +51,6 @@ func (s *Server) createJob(c *gin.Context) {
 		return
 	}
 	
-	// Validate job type
 	var jobType JobType
 	switch request.Type {
 	case string(JobTypeOnce):
@@ -70,7 +62,6 @@ func (s *Server) createJob(c *gin.Context) {
 		return
 	}
 	
-	// Create the job
 	job, err := s.jobService.CreateJob(request.Command, jobType, request.Schedule)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -80,13 +71,11 @@ func (s *Server) createJob(c *gin.Context) {
 	c.JSON(http.StatusCreated, job)
 }
 
-// listJobs handles the GET /api/jobs endpoint
 func (s *Server) listJobs(c *gin.Context) {
 	jobs := s.jobService.GetAllJobs()
 	c.JSON(http.StatusOK, jobs)
 }
 
-// getJob handles the GET /api/jobs/:id endpoint
 func (s *Server) getJob(c *gin.Context) {
 	id := c.Param("id")
 	job, err := s.jobService.GetJob(id)
