@@ -3,97 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Go Job Scheduler</title>
+    <title>Distributed Job Scheduler</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <style>
-        .job-row:hover {
-            background-color: #f8fafc;
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
         }
+        
+        .glass-card {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+        }
+        
+        .job-row:hover {
+            background-color: rgba(30, 41, 59, 0.5);
+        }
+        
         .status-pending {
-            color: #718096;
-            background-color: #EDF2F7;
+            color: #94a3b8;
+            background-color: rgba(148, 163, 184, 0.1);
         }
         .status-running {
-            color: #2C5282;
-            background-color: #EBEFFF;
+            color: #60a5fa;
+            background-color: rgba(96, 165, 250, 0.1);
         }
         .status-completed {
-            color: #22543D;
-            background-color: #C6F6D5;
+            color: #4ade80;
+            background-color: rgba(74, 222, 128, 0.1);
         }
         .status-failed {
-            color: #9B2C2C;
-            background-color: #FED7D7;
+            color: #f87171;
+            background-color: rgba(248, 113, 113, 0.1);
         }
-    .counter-change {
-        animation: pulse 0.5s ease-in-out;
-    }
-
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.2); }
-        100% { transform: scale(1); }
-    }
+        
+        .counter-change {
+            animation: pulse 0.5s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        input, select {
+            background: rgba(15, 23, 42, 0.5) !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+            color: #e2e8f0 !important;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+        }
+        
+        table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        th {
+            background: rgba(15, 23, 42, 0.8);
+            position: sticky;
+            top: 0;
+        }
+        
+        .health-card {
+            transition: all 0.3s ease;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .health-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 3px;
+        }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="container mx-auto p-4">
+<body class="bg-gray-900">
+    <div class="container mx-auto p-4 max-w-7xl">
         <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">Go Job Scheduler</h1>
-            <p class="text-gray-600">Submit and monitor distributed jobs</p>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">Distributed Job Scheduler</h1>
+                    <p class="text-gray-400">Submit and monitor distributed jobs</p>
+                </div>
+                <div class="flex space-x-2">
+                    <div class="h-3 w-3 rounded-full bg-green-500 animate-pulse"></div>
+                    <span class="text-sm text-gray-400">Live</span>
+                </div>
+            </div>
         </header>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Enhanced System Health Section -->
+        <div class="glass-card p-6 mb-6 relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-r from-blue-900/20 to-indigo-900/20 opacity-30"></div>
+            <div class="relative z-10">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-xl flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        System Health
+                    </h3>
+                    <span class="text-xs text-gray-400">Updated: <span id="lastUpdated">Just now</span></span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="health-card p-4 rounded-lg border-l-4 border-blue-500">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm text-gray-400">Pending</div>
+                                <div class="text-3xl font-bold text-blue-400 counter-change" id="pendingCount">0</div>
+                            </div>
+                            <div class="p-3 rounded-full bg-blue-900/30 text-blue-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="health-card p-4 rounded-lg border-l-4 border-indigo-500">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm text-gray-400">Running</div>
+                                <div class="text-3xl font-bold text-indigo-400 counter-change" id="runningCount">0</div>
+                            </div>
+                            <div class="p-3 rounded-full bg-indigo-900/30 text-indigo-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="health-card p-4 rounded-lg border-l-4 border-green-500">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm text-gray-400">Completed</div>
+                                <div class="text-3xl font-bold text-green-400 counter-change" id="completedCount">0</div>
+                            </div>
+                            <div class="p-3 rounded-full bg-green-900/30 text-green-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="health-card p-4 rounded-lg border-l-4 border-red-500">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm text-gray-400">Failed</div>
+                                <div class="text-3xl font-bold text-red-400 counter-change" id="failedCount">0</div>
+                            </div>
+                            <div class="p-3 rounded-full bg-red-900/30 text-red-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Job Form -->
-            <div class="md:col-span-1 bg-white p-6 rounded-lg shadow">
-                <h2 class="text-xl font-semibold mb-4">Submit a New Job</h2>
+            <div class="lg:col-span-1 glass-card p-6 rounded-lg">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+                    </svg>
+                    Submit a New Job
+                </h2>
                 <form id="jobForm">
                     <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2" for="command">
+                        <label class="block text-gray-300 text-sm font-medium mb-2" for="command">
                             Command
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="command" type="text" placeholder="ls -la" required>
+                        <input class="w-full px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               id="command" type="text" placeholder="ls -la" required>
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2" for="jobType">
+                        <label class="block text-gray-300 text-sm font-medium mb-2" for="jobType">
                             Job Type
                         </label>
-                        <select class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="jobType" required>
+                        <select class="w-full px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                id="jobType" required>
                             <option value="once">One-time</option>
                             <option value="cron">Scheduled (Cron)</option>
                         </select>
                     </div>
                     
                     <div class="mb-4 hidden" id="scheduleField">
-                        <label class="block text-gray-700 text-sm font-bold mb-2" for="schedule">
+                        <label class="block text-gray-300 text-sm font-medium mb-2" for="schedule">
                             Cron Schedule
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="schedule" type="text" placeholder="* * * * * *">
+                        <input class="w-full px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               id="schedule" type="text" placeholder="* * * * * *">
                         <p class="text-xs text-gray-500 mt-1">Format: sec min hour day month weekday</p>
                     </div>
                     
-                    <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="submit">
+                    <button class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 
+                                text-white font-medium py-2 px-4 rounded-md transition duration-200 ease-in-out transform hover:scale-[1.02]" 
+                            type="submit">
                         Submit Job
                     </button>
                 </form>
             </div>
             
             <!-- Job List -->
-            <div class="md:col-span-2 bg-white p-6 rounded-lg shadow">
-                <h2 class="text-xl font-semibold mb-4">Job List</h2>
+            <div class="lg:col-span-2 glass-card p-6 rounded-lg">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-semibold flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M9.504 1.132a1 1 0 01.992 0l1.75 1a1 1 0 11-.992 1.736L10 3.152l-1.254.716a1 1 0 11-.992-1.736l1.75-1zM5.618 4.504a1 1 0 01-.372 1.364L5.016 6l.23.132a1 1 0 11-.992 1.736L4 7.723V8a1 1 0 01-2 0V6a.996.996 0 01.52-.878l1.734-.99a1 1 0 011.364.372zm8.764 0a1 1 0 011.364-.372l1.733.99A1.002 1.002 0 0118 6v2a1 1 0 11-2 0v-.277l-.254.145a1 1 0 11-.992-1.736l.23-.132-.23-.132a1 1 0 01-.372-1.364zm-7 4a1 1 0 011.364-.372L10 8.848l1.254-.716a1 1 0 11.992 1.736L11 10.58V12a1 1 0 11-2 0v-1.42l-1.246-.712a1 1 0 01-.372-1.364zM3 11a1 1 0 011 1v1.42l1.246.712a1 1 0 11-.992 1.736l-1.75-1A1 1 0 012 14v-2a1 1 0 011-1zm14 0a1 1 0 011 1v2a1 1 0 01-.504.868l-1.75 1a1 1 0 11-.992-1.736L16 13.42V12a1 1 0 011-1zm-9.618 5.504a1 1 0 011.364-.372l.254.145V16a1 1 0 112 0v.277l.254-.145a1 1 0 11.992 1.736l-1.735.992a.995.995 0 01-1.022 0l-1.735-.992a1 1 0 01-.372-1.364z" clip-rule="evenodd" />
+                        </svg>
+                        Job List
+                    </h2>
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-400 mr-2">Auto-refresh in</span>
+                        <div class="h-2 w-2 rounded-full bg-blue-400 animate-pulse"></div>
+                    </div>
+                </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
+                    <table class="w-full divide-y divide-gray-700">
+                        <thead>
                             <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Command</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Command</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="jobList" class="bg-white divide-y divide-gray-200">
+                        <tbody id="jobList" class="divide-y divide-gray-700">
                             <!-- Jobs will be populated here -->
                             <tr>
                                 <td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading jobs...</td>
@@ -103,39 +279,24 @@
                 </div>
             </div>
         </div>
-        <div class="bg-white p-4 rounded-lg shadow mb-6">
-            <h3 class="font-bold text-lg mb-2">System Health</h3>
-            <div class="grid grid-cols-4 gap-4 text-center">
-                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
-                    <div class="text-2xl font-bold counter-change" id="pendingCount">0</div>
-                    <div class="text-sm text-blue-600">Pending</div>
-                </div>
-                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
-                    <div class="text-2xl font-bold counter-change" id="runningCount">0</div>
-                    <div class="text-sm text-blue-600">Running</div>
-                </div>
-                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
-                    <div class="text-2xl font-bold counter-change" id="completedCount">0</div>
-                    <div class="text-sm text-blue-600">Completed</div>
-                </div>
-                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
-                    <div class="text-2xl font-bold counter-change" id="failedCount">0</div>
-                    <div class="text-sm text-blue-600">Failed</div>
-                </div>
-            </div>
-        </div> 
+        
         <!-- Job Details Modal -->
-        <div id="jobModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-medium">Job Details</h3>
-                    <button id="closeModal" class="text-gray-500 hover:text-gray-700">
+        <div id="jobModal" class="fixed inset-0 modal-overlay flex items-center justify-center hidden z-50">
+            <div class="modal-content rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
+                <div class="flex justify-between items-center p-6 border-b border-gray-700">
+                    <h3 class="text-lg font-medium flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clip-rule="evenodd" />
+                        </svg>
+                        Job Details
+                    </h3>
+                    <button id="closeModal" class="text-gray-400 hover:text-gray-200">
                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
                     </button>
                 </div>
-                <div id="jobDetails" class="space-y-4">
+                <div id="jobDetails" class="p-6 overflow-y-auto scrollbar-custom max-h-[70vh]">
                     <!-- Job details will be populated here -->
                 </div>
             </div>
@@ -143,44 +304,48 @@
     </div>
     
     <script>
-
-function updateCounters() {
-    fetch('/api/jobs/stats')
-    .then(response => response.json())
-    .then(data => {
-        document.getElementById('pendingCount').textContent = data.pending;
-        document.getElementById('runningCount').textContent = data.running;
-        document.getElementById('completedCount').textContent = data.completed;
-        document.getElementById('failedCount').textContent = data.failed;
-        
-        animateCounter('pendingCount', data.pending);
-        animateCounter('runningCount', data.running);
-        animateCounter('completedCount', data.completed);
-        animateCounter('failedCount', data.failed);
-    })
-    .catch(error => console.error('Error fetching stats:', error));
-}
-
-function animateCounter(elementId, targetValue) {
-    const element = document.getElementById(elementId);
-    const current = parseInt(element.textContent) || 0;
-    const diff = targetValue - current;
-    
-    if (diff === 0) return;
-    
-    let count = current;
-    const increment = diff > 0 ? 1 : -1;
-    const interval = setInterval(() => {
-        count += increment;
-        element.textContent = count;
-        
-        if ((increment > 0 && count >= targetValue) || 
-            (increment < 0 && count <= targetValue)) {
-            element.textContent = targetValue;
-            clearInterval(interval);
+        function updateCounters() {
+            fetch('/api/jobs/stats')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('pendingCount').textContent = data.pending;
+                document.getElementById('runningCount').textContent = data.running;
+                document.getElementById('completedCount').textContent = data.completed;
+                document.getElementById('failedCount').textContent = data.failed;
+                
+                // Update timestamp
+                const now = new Date();
+                document.getElementById('lastUpdated').textContent = now.toLocaleTimeString();
+                
+                animateCounter('pendingCount', data.pending);
+                animateCounter('runningCount', data.running);
+                animateCounter('completedCount', data.completed);
+                animateCounter('failedCount', data.failed);
+            })
+            .catch(error => console.error('Error fetching stats:', error));
         }
-    }, 50);
-}
+
+        function animateCounter(elementId, targetValue) {
+            const element = document.getElementById(elementId);
+            const current = parseInt(element.textContent) || 0;
+            const diff = targetValue - current;
+            
+            if (diff === 0) return;
+            
+            let count = current;
+            const increment = diff > 0 ? 1 : -1;
+            const interval = setInterval(() => {
+                count += increment;
+                element.textContent = count;
+                
+                if ((increment > 0 && count >= targetValue) || 
+                    (increment < 0 && count <= targetValue)) {
+                    element.textContent = targetValue;
+                    clearInterval(interval);
+                }
+            }, 50);
+        }
+        
         setInterval(updateCounters, 2000);
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -241,50 +406,56 @@ function animateCounter(elementId, targetValue) {
                 });
             });
             
-function loadJobs() {
-    fetch('/api/jobs?t=' + new Date().getTime()) // Cache buster
-    .then(response => response.json())
-    .then(jobs => {
-        const jobList = document.getElementById('jobList');
-        
-        if (jobs.length === 0) {
-            jobList.innerHTML = `
-                <tr>
-                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">No jobs found</td>
-                </tr>
-            `;
-            return;
-        }
-        
-        jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        
-        jobList.innerHTML = jobs.map(job => `
-            <tr class="job-row hover:bg-gray-50" data-id="${job.id}">
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${job.id.substring(0, 8)}...</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(job.command.length > 30 ? job.command.substring(0, 30) + '...' : job.command)}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${job.type === 'cron' ? `<span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800">Cron</span>` : `<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Once</span>`}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 py-1 text-xs rounded-full status-${job.status.toLowerCase()}">${capitalizeFirstLetter(job.status)}</span>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <button class="text-blue-600 hover:text-blue-900 view-job">View</button>
-                </td>
-            </tr>
-        `).join('');
-        
-        document.querySelectorAll('.view-job').forEach(button => {
-            button.addEventListener('click', function() {
-                const jobId = this.closest('tr').dataset.id;
-                viewJobDetails(jobId);
-            });
-        });
-    })
-    .catch(error => {
-        console.error('Error loading jobs:', error);
-    });
-}
+            function loadJobs() {
+                fetch('/api/jobs?t=' + new Date().getTime()) // Cache buster
+                .then(response => response.json())
+                .then(jobs => {
+                    const jobList = document.getElementById('jobList');
+                    
+                    if (jobs.length === 0) {
+                        jobList.innerHTML = `
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">No jobs found</td>
+                            </tr>
+                        `;
+                        return;
+                    }
+                    
+                    jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                    
+                    jobList.innerHTML = jobs.map(job => `
+                        <tr class="job-row" data-id="${job.id}">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-400">${job.id.substring(0, 8)}...</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">${escapeHtml(job.command.length > 30 ? job.command.substring(0, 30) + '...' : job.command)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                ${job.type === 'cron' ? `<span class="px-2 py-1 text-xs rounded-full bg-indigo-900/30 text-indigo-400">Cron</span>` : `<span class="px-2 py-1 text-xs rounded-full bg-gray-700 text-gray-300">Once</span>`}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs rounded-full status-${job.status.toLowerCase()}">${capitalizeFirstLetter(job.status)}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                                <button class="text-blue-400 hover:text-blue-300 view-job flex items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    View
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                    
+                    document.querySelectorAll('.view-job').forEach(button => {
+                        button.addEventListener('click', function() {
+                            const jobId = this.closest('tr').dataset.id;
+                            viewJobDetails(jobId);
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading jobs:', error);
+                });
+            }
             
             function viewJobDetails(jobId) {
                 fetch(`/api/jobs/${jobId}`)
@@ -299,56 +470,56 @@ function loadJobs() {
                     jobDetails.innerHTML = `
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <p class="text-sm font-medium text-gray-500">ID</p>
-                                <p class="mt-1">${job.id}</p>
+                                <p class="text-sm font-medium text-gray-400">ID</p>
+                                <p class="mt-1 text-gray-200">${job.id}</p>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Status</p>
+                                <p class="text-sm font-medium text-gray-400">Status</p>
                                 <p class="mt-1">
                                     <span class="px-2 py-1 text-xs rounded-full status-${job.status}">${capitalizeFirstLetter(job.status)}</span>
                                 </p>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Command</p>
-                                <p class="mt-1 font-mono text-sm">${escapeHtml(job.command)}</p>
+                                <p class="text-sm font-medium text-gray-400">Command</p>
+                                <p class="mt-1 font-mono text-sm text-gray-200">${escapeHtml(job.command)}</p>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Type</p>
-                                <p class="mt-1">${job.type === 'cron' ? 'Scheduled (Cron)' : 'One-time'}</p>
+                                <p class="text-sm font-medium text-gray-400">Type</p>
+                                <p class="mt-1 text-gray-200">${job.type === 'cron' ? 'Scheduled (Cron)' : 'One-time'}</p>
                             </div>
                             ${job.type === 'cron' ? `
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Schedule</p>
-                                <p class="mt-1 font-mono text-sm">${job.schedule}</p>
+                                <p class="text-sm font-medium text-gray-400">Schedule</p>
+                                <p class="mt-1 font-mono text-sm text-gray-200">${job.schedule}</p>
                             </div>
                             ` : ''}
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Created</p>
-                                <p class="mt-1">${createdAt}</p>
+                                <p class="text-sm font-medium text-gray-400">Created</p>
+                                <p class="mt-1 text-gray-200">${createdAt}</p>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Started</p>
-                                <p class="mt-1">${startedAt}</p>
+                                <p class="text-sm font-medium text-gray-400">Started</p>
+                                <p class="mt-1 text-gray-200">${startedAt}</p>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-gray-500">Finished</p>
-                                <p class="mt-1">${finishedAt}</p>
+                                <p class="text-sm font-medium text-gray-400">Finished</p>
+                                <p class="mt-1 text-gray-200">${finishedAt}</p>
                             </div>
                         </div>
                         ${job.output || job.error ? `
                         <div class="mt-6">
-                            <p class="text-sm font-medium text-gray-500">Result</p>
-                            <div class="mt-2 p-4 bg-gray-50 rounded-md overflow-auto max-h-64">
+                            <p class="text-sm font-medium text-gray-400">Result</p>
+                            <div class="mt-2 p-4 bg-gray-800 rounded-md overflow-auto max-h-64">
                                 ${job.output ? `
                                 <div class="mb-2">
-                                    <p class="text-xs text-gray-500">Output:</p>
-                                    <pre class="text-sm text-gray-800 whitespace-pre-wrap">${escapeHtml(job.output)}</pre>
+                                    <p class="text-xs text-gray-400">Output:</p>
+                                    <pre class="text-sm text-gray-200 whitespace-pre-wrap">${escapeHtml(job.output)}</pre>
                                 </div>
                                 ` : ''}
                                 ${job.error ? `
                                 <div>
-                                    <p class="text-xs text-red-500">Error:</p>
-                                    <pre class="text-sm text-red-800 whitespace-pre-wrap">${escapeHtml(job.error)}</pre>
+                                    <p class="text-xs text-red-400">Error:</p>
+                                    <pre class="text-sm text-red-300 whitespace-pre-wrap">${escapeHtml(job.error)}</pre>
                                 </div>
                                 ` : ''}
                             </div>
@@ -390,6 +561,7 @@ function loadJobs() {
             setInterval(loadJobs, 5000);
             
             loadJobs();
+            updateCounters();
         });
     </script>
 </body>
