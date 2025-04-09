@@ -25,6 +25,15 @@
             color: #9B2C2C;
             background-color: #FED7D7;
         }
+    .counter-change {
+        animation: pulse 0.5s ease-in-out;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.2); }
+        100% { transform: scale(1); }
+    }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -94,7 +103,27 @@
                 </div>
             </div>
         </div>
-        
+        <div class="bg-white p-4 rounded-lg shadow mb-6">
+            <h3 class="font-bold text-lg mb-2">System Health</h3>
+            <div class="grid grid-cols-4 gap-4 text-center">
+                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
+                    <div class="text-2xl font-bold counter-change" id="pendingCount">0</div>
+                    <div class="text-sm text-blue-600">Pending</div>
+                </div>
+                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
+                    <div class="text-2xl font-bold counter-change" id="runningCount">0</div>
+                    <div class="text-sm text-blue-600">Running</div>
+                </div>
+                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
+                    <div class="text-2xl font-bold counter-change" id="completedCount">0</div>
+                    <div class="text-sm text-blue-600">Completed</div>
+                </div>
+                <div class="p-3 bg-blue-50 rounded transition-all duration-300 hover:shadow-md">
+                    <div class="text-2xl font-bold counter-change" id="failedCount">0</div>
+                    <div class="text-sm text-blue-600">Failed</div>
+                </div>
+            </div>
+        </div> 
         <!-- Job Details Modal -->
         <div id="jobModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center hidden">
             <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl p-6">
@@ -114,8 +143,48 @@
     </div>
     
     <script>
+
+function updateCounters() {
+    fetch('/api/jobs/stats')
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('pendingCount').textContent = data.pending;
+        document.getElementById('runningCount').textContent = data.running;
+        document.getElementById('completedCount').textContent = data.completed;
+        document.getElementById('failedCount').textContent = data.failed;
+        
+        animateCounter('pendingCount', data.pending);
+        animateCounter('runningCount', data.running);
+        animateCounter('completedCount', data.completed);
+        animateCounter('failedCount', data.failed);
+    })
+    .catch(error => console.error('Error fetching stats:', error));
+}
+
+function animateCounter(elementId, targetValue) {
+    const element = document.getElementById(elementId);
+    const current = parseInt(element.textContent) || 0;
+    const diff = targetValue - current;
+    
+    if (diff === 0) return;
+    
+    let count = current;
+    const increment = diff > 0 ? 1 : -1;
+    const interval = setInterval(() => {
+        count += increment;
+        element.textContent = count;
+        
+        if ((increment > 0 && count >= targetValue) || 
+            (increment < 0 && count <= targetValue)) {
+            element.textContent = targetValue;
+            clearInterval(interval);
+        }
+    }, 50);
+}
+        setInterval(updateCounters, 2000);
+
         document.addEventListener('DOMContentLoaded', function() {
-            // Show/hide schedule field based on job type
+            
             document.getElementById('jobType').addEventListener('change', function() {
                 const scheduleField = document.getElementById('scheduleField');
                 if (this.value === 'cron') {
@@ -135,13 +204,13 @@
                 const type = document.getElementById('jobType').value;
                 const schedule = document.getElementById('schedule').value;
                 
-                // Validate form
+               
                 if (type === 'cron' && !schedule) {
                     alert('Cron schedule is required for scheduled jobs');
                     return;
                 }
                 
-                // Submit job
+            
                 fetch('/api/jobs', {
                     method: 'POST',
                     headers: {

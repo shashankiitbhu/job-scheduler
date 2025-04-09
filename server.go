@@ -92,6 +92,7 @@ func (s *Server) Start() error {
 		api.POST("/jobs", s.createJob)
 		api.GET("/jobs", s.listJobs)
 		api.GET("/jobs/:id", s.getJob)
+		api.GET("/jobs/stats", s.getJobStats)
 	}
 	
 	return router.Run(fmt.Sprintf(":%d", s.port))
@@ -127,4 +128,33 @@ func (s *Server) createJob(c *gin.Context) {
 	}
 	
 	c.JSON(http.StatusCreated, job)
+}
+
+// Add to your Server struct
+type JobStats struct {
+    Pending   int `json:"pending"`
+    Running   int `json:"running"`
+    Completed int `json:"completed"`
+    Failed    int `json:"failed"`
+}
+
+// Add this handler method
+func (s *Server) getJobStats(c *gin.Context) {
+    jobs := s.jobService.GetAllJobs()
+    
+    stats := JobStats{}
+    for _, job := range jobs {
+        switch job.Status {
+        case JobStatusPending:
+            stats.Pending++
+        case JobStatusRunning:
+            stats.Running++
+        case JobStatusCompleted:
+            stats.Completed++
+        case JobStatusFailed:
+            stats.Failed++
+        }
+    }
+    
+    c.JSON(http.StatusOK, stats)
 }
