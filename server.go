@@ -3,9 +3,67 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+type JobResponse struct {
+    ID         string    `json:"id"`
+    Command    string    `json:"command"`
+    Type       string    `json:"type"`
+    Status     string    `json:"status"`
+    Schedule   string    `json:"schedule,omitempty"`
+    CreatedAt  time.Time `json:"created_at"`
+    StartedAt  time.Time `json:"started_at,omitempty"`
+    FinishedAt time.Time `json:"finished_at,omitempty"`
+    Output     string    `json:"output,omitempty"`
+    Error      string    `json:"error,omitempty"`
+}
+
+func (s *Server) listJobs(c *gin.Context) {
+    jobs := s.jobService.GetAllJobs()
+    
+    response := make([]JobResponse, 0, len(jobs))
+    for _, job := range jobs {
+        response = append(response, JobResponse{
+            ID:         job.ID,
+            Command:    job.Command,
+            Type:       string(job.Type),
+            Status:     string(job.Status),
+            Schedule:   job.Schedule,
+            CreatedAt:  job.CreatedAt,
+            StartedAt:  job.StartedAt,
+            FinishedAt: job.FinishedAt,
+            Output:     job.Output,
+            Error:      job.Error,
+        })
+    }
+    
+    c.JSON(http.StatusOK, response)
+}
+
+func (s *Server) getJob(c *gin.Context) {
+    id := c.Param("id")
+    job, err := s.jobService.GetJob(id)
+    if err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+        return
+    }
+    
+    c.JSON(http.StatusOK, JobResponse{
+        ID:         job.ID,
+        Command:    job.Command,
+        Type:       string(job.Type),
+        Status:     string(job.Status),
+        Schedule:   job.Schedule,
+        CreatedAt:  job.CreatedAt,
+        StartedAt:  job.StartedAt,
+        FinishedAt: job.FinishedAt,
+        Output:     job.Output,
+        Error:      job.Error,
+    })
+}
 
 type Server struct {
 	jobService *JobService
@@ -69,20 +127,4 @@ func (s *Server) createJob(c *gin.Context) {
 	}
 	
 	c.JSON(http.StatusCreated, job)
-}
-
-func (s *Server) listJobs(c *gin.Context) {
-	jobs := s.jobService.GetAllJobs()
-	c.JSON(http.StatusOK, jobs)
-}
-
-func (s *Server) getJob(c *gin.Context) {
-	id := c.Param("id")
-	job, err := s.jobService.GetJob(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
-		return
-	}
-	
-	c.JSON(http.StatusOK, job)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+
 	"os/exec"
 	"strings"
 	"time"
@@ -44,8 +45,9 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-// processJob executes the command associated with a job
 func (w *Worker) processJob(job *Job) {
+	
+	
 	err := w.jobService.UpdateJobStatus(job.ID, JobStatusRunning, "", "")
 	if err != nil {
 		fmt.Printf("Failed to update job status: %v\n", err)

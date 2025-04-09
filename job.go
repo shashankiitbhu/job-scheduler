@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
+const JobsDataKey = "jobs:data" 
 
 type JobType string
 
@@ -45,7 +46,7 @@ type Job struct {
 type JobService struct {
 	redis    *redis.Client
 	jobs     map[string]*Job 
-	jobsMutex sync.RWMutex   // Mutex for concurrent access to the jobs map
+	jobsMutex sync.RWMutex  
 }
 
 const (
@@ -83,11 +84,14 @@ func (s *JobService) CreateJob(cmd string, jobType JobType, schedule string) (*J
 
 	
 	if jobType == JobTypeOnce {
-		err := s.QueueJob(job)
-		if err != nil {
-			return nil, fmt.Errorf("failed to queue job: %w", err)
-		}
-	}
+        if err := s.QueueJob(job); err != nil {
+            // Rollback memory map if queue fails
+            s.jobsMutex.Lock()
+            delete(s.jobs, job.ID)
+            s.jobsMutex.Unlock()
+            return nil, err
+        }
+    }
 
 	return job, nil
 }
@@ -110,55 +114,105 @@ func (s *JobService) QueueJob(job *Job) error {
 }
 
 func (s *JobService) GetJob(id string) (*Job, error) {
-	s.jobsMutex.RLock()
-	defer s.jobsMutex.RUnlock()
+    // First try Redis
+    ctx := context.Background()
+    jobJSON, err := s.redis.HGet(ctx, "jobs:data", id).Result()
+    if err == nil {
+        var job Job
+        if err := json.Unmarshal([]byte(jobJSON), &job); err == nil {
+            // Update local cache
+            s.jobsMutex.Lock()
+            s.jobs[id] = &job
+            s.jobsMutex.Unlock()
+            return &job, nil
+        }
+    }
 
-	job, exists := s.jobs[id]
-	if !exists {
-		return nil, errors.New("job not found")
-	}
-
-	return job, nil
+    // Fallback to memory
+    s.jobsMutex.RLock()
+    defer s.jobsMutex.RUnlock()
+    job, exists := s.jobs[id]
+    if !exists {
+        return nil, errors.New("job not found")
+    }
+    return job, nil
 }
 
 func (s *JobService) GetAllJobs() []*Job {
-	s.jobsMutex.RLock()
-	defer s.jobsMutex.RUnlock()
+    s.jobsMutex.RLock()
+    defer s.jobsMutex.RUnlock()
 
-	jobs := make([]*Job, 0, len(s.jobs))
-	for _, job := range s.jobs {
-		jobs = append(jobs, job)
-	}
+    // Get all jobs from Redis first
+    ctx := context.Background()
+    redisJobs, err := s.redis.HGetAll(ctx, JobsDataKey).Result()
+    if err != nil {
+        log.Printf("Failed to get jobs from Redis: %v", err)
+        // Fallback to in-memory
+        return s.getInMemoryJobs()
+    }
 
-	return jobs
+    // Merge Redis and in-memory jobs
+    jobs := make([]*Job, 0, len(redisJobs))
+    for id, jobJSON := range redisJobs {
+        var job Job
+        if err := json.Unmarshal([]byte(jobJSON), &job); err == nil {
+            // Update in-memory map if newer than our version
+            if existing, ok := s.jobs[id]; !ok || job.CreatedAt.After(existing.CreatedAt) {
+                s.jobs[id] = &job
+            }
+            jobs = append(jobs, &job)
+        }
+    }
+
+    return jobs
+}
+
+func (s *JobService) getInMemoryJobs() []*Job {
+    jobs := make([]*Job, 0, len(s.jobs))
+    for _, job := range s.jobs {
+        jobs = append(jobs, job)
+    }
+    return jobs
 }
 
 func (s *JobService) UpdateJobStatus(id string, status JobStatus, output, errMsg string) error {
-	s.jobsMutex.Lock()
-	defer s.jobsMutex.Unlock()
+    s.jobsMutex.Lock()
+    defer s.jobsMutex.Unlock()
 
-	job, exists := s.jobs[id]
-	if !exists {
-		return errors.New("job not found")
-	}
+    job, exists := s.jobs[id]
+    if !exists {
+        return errors.New("job not found")
+    }
 
-	job.Status = status
+    // Update local copy
+    job.Status = status
+    job.Output = output
+    job.Error = errMsg
 
-	if status == JobStatusRunning && job.StartedAt.IsZero() {
-		job.StartedAt = time.Now()
-	}
+    if status == JobStatusRunning && job.StartedAt.IsZero() {
+        job.StartedAt = time.Now()
+    }
 
-	if status == JobStatusCompleted || status == JobStatusFailed {
-		job.FinishedAt = time.Now()
-		job.Output = output
-		job.Error = errMsg
-	}
+    if status == JobStatusCompleted || status == JobStatusFailed {
+        job.FinishedAt = time.Now()
+    }
 
-	return nil
+    // Persist to Redis
+    jobJSON, err := json.Marshal(job)
+    if err != nil {
+        return fmt.Errorf("failed to marshal job: %w", err)
+    }
+
+    ctx := context.Background()
+    err = s.redis.HSet(ctx, "jobs:data", id, jobJSON).Err()
+    if err != nil {
+        return fmt.Errorf("failed to save job to Redis: %w", err)
+    }
+
+    return nil
 }
 
 func (s *JobService) DequeueJob(ctx context.Context) (*Job, error) {
-	// Use BLPOP to wait for a job
 	result, err := s.redis.BLPop(ctx, 0, JobsQueueKey).Result()
 	if err != nil {
 		if err == context.Canceled {
@@ -178,6 +232,17 @@ func (s *JobService) DequeueJob(ctx context.Context) (*Job, error) {
 		return nil, fmt.Errorf("failed to unmarshal job: %w", err)
 	}
 
+    s.jobsMutex.Lock()
+    defer s.jobsMutex.Unlock()
+    
+    if existingJob, exists := s.jobs[job.ID]; exists {
+        return existingJob, nil
+    }
+    
+   
+    job.Status = JobStatusPending 
+    s.jobs[job.ID] = &job
+   
 	return &job, nil
 }
 

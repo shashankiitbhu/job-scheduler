@@ -172,55 +172,51 @@
                 });
             });
             
-            // Load jobs
-            function loadJobs() {
-                fetch('/api/jobs')
-                .then(response => response.json())
-                .then(jobs => {
-                    const jobList = document.getElementById('jobList');
-                    
-                    if (jobs.length === 0) {
-                        jobList.innerHTML = `
-                            <tr>
-                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">No jobs found</td>
-                            </tr>
-                        `;
-                        return;
-                    }
-                    
-                    // Sort jobs by creation time (newest first)
-                    jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                    
-                    jobList.innerHTML = jobs.map(job => `
-                        <tr class="job-row hover:bg-gray-50" data-id="${job.id}">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${job.id.substring(0, 8)}...</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(job.command.length > 30 ? job.command.substring(0, 30) + '...' : job.command)}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                ${job.type === 'cron' ? `<span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800">Cron</span>` : `<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Once</span>`}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 py-1 text-xs rounded-full status-${job.status}">${capitalizeFirstLetter(job.status)}</span>
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                <button class="text-blue-600 hover:text-blue-900 view-job">View</button>
-                            </td>
-                        </tr>
-                    `).join('');
-                    
-                    // Add click handlers for view buttons
-                    document.querySelectorAll('.view-job').forEach(button => {
-                        button.addEventListener('click', function() {
-                            const jobId = this.closest('tr').dataset.id;
-                            viewJobDetails(jobId);
-                        });
-                    });
-                })
-                .catch(error => {
-                    console.error('Error loading jobs:', error);
-                });
-            }
+function loadJobs() {
+    fetch('/api/jobs?t=' + new Date().getTime()) // Cache buster
+    .then(response => response.json())
+    .then(jobs => {
+        const jobList = document.getElementById('jobList');
+        
+        if (jobs.length === 0) {
+            jobList.innerHTML = `
+                <tr>
+                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">No jobs found</td>
+                </tr>
+            `;
+            return;
+        }
+        
+        jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        
+        jobList.innerHTML = jobs.map(job => `
+            <tr class="job-row hover:bg-gray-50" data-id="${job.id}">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${job.id.substring(0, 8)}...</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${escapeHtml(job.command.length > 30 ? job.command.substring(0, 30) + '...' : job.command)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${job.type === 'cron' ? `<span class="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800">Cron</span>` : `<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">Once</span>`}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 py-1 text-xs rounded-full status-${job.status.toLowerCase()}">${capitalizeFirstLetter(job.status)}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button class="text-blue-600 hover:text-blue-900 view-job">View</button>
+                </td>
+            </tr>
+        `).join('');
+        
+        document.querySelectorAll('.view-job').forEach(button => {
+            button.addEventListener('click', function() {
+                const jobId = this.closest('tr').dataset.id;
+                viewJobDetails(jobId);
+            });
+        });
+    })
+    .catch(error => {
+        console.error('Error loading jobs:', error);
+    });
+}
             
-            // View job details
             function viewJobDetails(jobId) {
                 fetch(`/api/jobs/${jobId}`)
                 .then(response => response.json())
@@ -291,7 +287,6 @@
                         ` : ''}
                     `;
                     
-                    // Show the modal
                     document.getElementById('jobModal').classList.remove('hidden');
                 })
                 .catch(error => {
@@ -300,19 +295,16 @@
                 });
             }
             
-            // Close modal
             document.getElementById('closeModal').addEventListener('click', function() {
                 document.getElementById('jobModal').classList.add('hidden');
             });
             
-            // Close modal when clicking outside
             document.getElementById('jobModal').addEventListener('click', function(e) {
                 if (e.target === this) {
                     this.classList.add('hidden');
                 }
             });
             
-            // Helper function to escape HTML
             function escapeHtml(unsafe) {
                 return unsafe
                     .replace(/&/g, "&amp;")
@@ -322,15 +314,12 @@
                     .replace(/'/g, "&#039;");
             }
             
-            // Helper function to capitalize first letter
             function capitalizeFirstLetter(string) {
                 return string.charAt(0).toUpperCase() + string.slice(1);
             }
             
-            // Auto-refresh job list every 5 seconds
             setInterval(loadJobs, 5000);
             
-            // Initial load
             loadJobs();
         });
     </script>
