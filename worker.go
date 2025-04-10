@@ -46,7 +46,6 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 func (w *Worker) processJob(job *Job) {
-
 	err := w.jobService.UpdateJobStatus(job.ID, JobStatusRunning, "", "")
 	if err != nil {
 		fmt.Printf("Failed to update job status: %v\n", err)
@@ -80,4 +79,17 @@ func (w *Worker) processJob(job *Job) {
 	}
 
 	fmt.Printf("Job %s completed with status: %s\n", job.ID, status)
+
+	// Handle automatic retry for failed jobs
+	if status == JobStatusFailed && job.MaxRetries > 0 && job.RetryCount < job.MaxRetries {
+		fmt.Printf("Job %s failed, scheduling retry %d of %d\n", job.ID, job.RetryCount+1, job.MaxRetries)
+
+		// Create a retry job
+		retryJob, err := w.jobService.RetryJob(job.ID)
+		if err != nil {
+			fmt.Printf("Failed to schedule retry for job %s: %v\n", job.ID, err)
+		} else {
+			fmt.Printf("Scheduled retry job %s for failed job %s\n", retryJob.ID, job.ID)
+		}
+	}
 }

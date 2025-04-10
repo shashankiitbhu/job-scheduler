@@ -29,9 +29,10 @@ func (s *Scheduler) Start() {
 		}
 	}
 
-	// Add a periodic job to check for delayed jobs
+	// Add a periodic job to check for delayed jobs and retry jobs
 	s.cron.AddFunc("*/10 * * * * *", func() {
 		s.jobService.CheckDelayedJobs()
+		s.jobService.CheckRetryJobs()
 	})
 
 	s.cron.Start()

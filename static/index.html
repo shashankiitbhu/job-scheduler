@@ -235,6 +235,23 @@
                                id="runAt" type="datetime-local">
                         <p class="text-xs text-gray-500 mt-1">Set a future time to run this one-time job</p>
                     </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-300 text-sm font-medium mb-2" for="maxRetries">
+                            Max Retries
+                        </label>
+                        <input class="w-full px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               id="maxRetries" type="number" min="0" value="0">
+                        <p class="text-xs text-gray-500 mt-1">Set to 0 for no retries</p>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-300 text-sm font-medium mb-2" for="retryDelay">
+                            Retry Delay (seconds)
+                        </label>
+                        <input class="w-full px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               id="retryDelay" type="number" min="0" value="30">
+                    </div>
                     
                     <div class="mb-4 hidden" id="scheduleField">
                         <label class="block text-gray-300 text-sm font-medium mb-2" for="schedule">
@@ -299,7 +316,7 @@
                         </svg>
                         Job Details
                     </h3>
-                    <button id="closeModal" class="text-gray-400 hover:text-gray-200">
+                    <button type="button" id="closeModal" class="text-gray-400 hover:text-gray-200">
                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
@@ -382,6 +399,8 @@
                 const type = document.getElementById('jobType').value;
                 const schedule = document.getElementById('schedule').value;
                 const runAtInput = document.getElementById('runAt').value;
+                const maxRetries = parseInt(document.getElementById('maxRetries').value, 10) || 0;
+                const retryDelay = parseInt(document.getElementById('retryDelay').value, 10) || 30;
                 
                 // Parse the runAt datetime if provided
                 let runAt = null;
@@ -403,7 +422,9 @@
                         command,
                         type,
                         schedule: type === 'cron' ? schedule : '',
-                        run_at: runAt
+                        run_at: runAt,
+                        max_retries: maxRetries,
+                        retry_delay: retryDelay
                     })
                 })
                 .then(response => {
@@ -419,11 +440,33 @@
                     document.getElementById('command').value = '';
                     document.getElementById('schedule').value = '';
                     document.getElementById('runAt').value = '';
+                    document.getElementById('maxRetries').value = '0';
+                    document.getElementById('retryDelay').value = '30';
                     loadJobs();
                 })
                 .catch(error => {
                     alert('Error: ' + error.message);
                 });
+            });
+
+            // Fix close button functionality
+            document.getElementById('closeModal').addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                document.getElementById('jobModal').classList.add('hidden');
+            });
+
+            // Make sure modal overlay click also closes it
+            document.getElementById('jobModal').addEventListener('click', function(e) {
+                // Only close if the click is directly on the overlay
+                if (e.target === this) {
+                    this.classList.add('hidden');
+                }
+            });
+
+            // Prevent click propagation from modal content
+            document.querySelector('.modal-content').addEventListener('click', function(e) {
+                e.stopPropagation();
             });
             
             function loadJobs() {
@@ -488,6 +531,30 @@
                     let finishedAt = job.finished_at ? new Date(job.finished_at).toLocaleString() : 'N/A';
                     let runAt = job.run_at ? new Date(job.run_at).toLocaleString() : 'Immediate';
                     
+                    // Retry information
+                    let retryInfo = '';
+                    if (job.max_retries > 0) {
+                        retryInfo = `
+                        <div>
+                            <p class="text-sm font-medium text-gray-400">Retry Settings</p>
+                            <p class="mt-1 text-gray-200">
+                                ${job.retry_count} of ${job.max_retries} attempts
+                                (${job.retry_delay}s delay)
+                            </p>
+                        </div>`;
+                    }
+                    
+                    // Retry button for failed jobs that haven't reached max retries
+                    let retryButton = '';
+                    if (job.status === 'failed' && (job.retry_count < job.max_retries || job.max_retries === 0)) {
+                        retryButton = `
+                        <div class="mt-6">
+                            <button id="retryJobBtn" data-id="${job.id}" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                Retry Job
+                            </button>
+                        </div>`;
+                    }
+                    
                     jobDetails.innerHTML = `
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -514,6 +581,13 @@
                                 <p class="mt-1 font-mono text-sm text-gray-200">${job.schedule}</p>
                             </div>
                             ` : ''}
+                            ${job.type === 'once' ? `
+                            <div>
+                                <p class="text-sm font-medium text-gray-400">Scheduled Run Time</p>
+                                <p class="mt-1 text-gray-200">${runAt}</p>
+                            </div>
+                            ` : ''}
+                            ${retryInfo}
                             <div>
                                 <p class="text-sm font-medium text-gray-400">Created</p>
                                 <p class="mt-1 text-gray-200">${createdAt}</p>
@@ -546,13 +620,45 @@
                             </div>
                         </div>
                         ` : ''}
+                        ${retryButton}
                     `;
                     
                     document.getElementById('jobModal').classList.remove('hidden');
+                    
+                    // Add event handler for retry button if it exists
+                    const retryBtn = document.getElementById('retryJobBtn');
+                    if (retryBtn) {
+                        retryBtn.addEventListener('click', function() {
+                            const jobId = this.getAttribute('data-id');
+                            retryJob(jobId);
+                        });
+                    }
                 })
                 .catch(error => {
                     console.error('Error loading job details:', error);
                     alert('Error loading job details');
+                });
+            }
+
+            function retryJob(jobId) {
+                fetch(`/api/jobs/${jobId}/retry`, {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => {
+                            throw new Error(err.error || 'Failed to retry job');
+                        });
+                    }
+                    return response.json();
+                })
+                .then(job => {
+                    console.log('Job retried:', job);
+                    document.getElementById('jobModal').classList.add('hidden');
+                    loadJobs();
+                })
+                .catch(error => {
+                    alert('Error: ' + error.message);
                 });
             }
             

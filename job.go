@@ -32,17 +32,22 @@ const (
 )
 
 type Job struct {
-	ID         string    `json:"id"`
-	Command    string    `json:"command"`
-	Type       JobType   `json:"type"`
-	Schedule   string    `json:"schedule,omitempty"`
-	RunAt      time.Time `json:"run_at,omitempty"`
-	Status     JobStatus `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	StartedAt  time.Time `json:"started_at,omitempty"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
-	Output     string    `json:"output,omitempty"`
-	Error      string    `json:"error,omitempty"`
+	ID            string    `json:"id"`
+	Command       string    `json:"command"`
+	Type          JobType   `json:"type"`
+	Schedule      string    `json:"schedule,omitempty"`
+	RunAt         time.Time `json:"run_at,omitempty"`
+	Status        JobStatus `json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+	StartedAt     time.Time `json:"started_at,omitempty"`
+	FinishedAt    time.Time `json:"finished_at,omitempty"`
+	Output        string    `json:"output,omitempty"`
+	Error         string    `json:"error,omitempty"`
+	RetryCount    int       `json:"retry_count"`               // Add retry count
+	MaxRetries    int       `json:"max_retries"`               // Add maximum retries
+	RetryDelay    int       `json:"retry_delay"`               // Delay in seconds between retries
+	NextRetryAt   time.Time `json:"next_retry_at,omitempty"`   // When to retry next
+	OriginalJobID string    `json:"original_job_id,omitempty"` // For tracking retries of the same job
 }
 
 type JobService struct {
@@ -62,7 +67,7 @@ func NewJobService(redisClient *redis.Client) *JobService {
 	}
 }
 
-func (s *JobService) CreateJob(cmd string, jobType JobType, schedule string, runAt time.Time) (*Job, error) {
+func (s *JobService) CreateJob(cmd string, jobType JobType, schedule string, runAt time.Time, maxRetries, retryDelay int) (*Job, error) {
 	if cmd == "" {
 		return nil, errors.New("command cannot be empty")
 	}
@@ -72,13 +77,16 @@ func (s *JobService) CreateJob(cmd string, jobType JobType, schedule string, run
 	}
 
 	job := &Job{
-		ID:        uuid.New().String(),
-		Command:   cmd,
-		Type:      jobType,
-		Schedule:  schedule,
-		RunAt:     runAt,
-		Status:    JobStatusPending,
-		CreatedAt: time.Now(),
+		ID:         uuid.New().String(),
+		Command:    cmd,
+		Type:       jobType,
+		Schedule:   schedule,
+		RunAt:      runAt,
+		Status:     JobStatusPending,
+		CreatedAt:  time.Now(),
+		RetryCount: 0,
+		MaxRetries: maxRetries,
+		RetryDelay: retryDelay,
 	}
 
 	s.jobsMutex.Lock()
@@ -300,4 +308,121 @@ func setupRedisClient(config *Config) *redis.Client {
 	}
 
 	return client
+}
+
+// RetryJob creates a retry for a failed job
+func (s *JobService) RetryJob(jobID string) (*Job, error) {
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+
+	originalJob, exists := s.jobs[jobID]
+	if !exists {
+		return nil, errors.New("job not found")
+	}
+
+	// Only retry failed jobs that haven't reached max retries
+	if originalJob.Status != JobStatusFailed {
+		return nil, errors.New("only failed jobs can be retried")
+	}
+
+	if originalJob.RetryCount >= originalJob.MaxRetries && originalJob.MaxRetries > 0 {
+		return nil, errors.New("maximum retry attempts reached")
+	}
+
+	// If this is already a retry, find the original job
+	originalJobID := originalJob.OriginalJobID
+	if originalJobID == "" {
+		originalJobID = jobID // This is the original job
+	}
+
+	// Create a new job as a retry of the original
+	retryJob := &Job{
+		ID:            uuid.New().String(),
+		Command:       originalJob.Command,
+		Type:          JobTypeOnce, // Retries are always one-time
+		Status:        JobStatusPending,
+		CreatedAt:     time.Now(),
+		RetryCount:    originalJob.RetryCount + 1,
+		MaxRetries:    originalJob.MaxRetries,
+		RetryDelay:    originalJob.RetryDelay,
+		OriginalJobID: originalJobID,
+	}
+
+	// Calculate next retry time if delay is specified
+	if originalJob.RetryDelay > 0 {
+		retryJob.RunAt = time.Now().Add(time.Duration(originalJob.RetryDelay) * time.Second)
+	}
+
+	// Store the retry job
+	s.jobs[retryJob.ID] = retryJob
+
+	// Update Redis
+	jobJSON, err := json.Marshal(retryJob)
+	if err == nil {
+		ctx := context.Background()
+		s.redis.HSet(ctx, JobsDataKey, retryJob.ID, jobJSON)
+	}
+
+	// Queue immediately if no delay
+	if retryJob.RunAt.IsZero() {
+		if err := s.QueueJob(retryJob); err != nil {
+			delete(s.jobs, retryJob.ID)
+			return nil, err
+		}
+	}
+
+	return retryJob, nil
+}
+
+// CheckRetryJobs checks for jobs that need to be retried
+func (s *JobService) CheckRetryJobs() {
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+
+	now := time.Now()
+	for _, job := range s.jobs {
+		// Skip jobs that are not failed or don't have scheduled retry
+		if job.Status != JobStatusFailed || job.NextRetryAt.IsZero() || job.RetryCount >= job.MaxRetries {
+			continue
+		}
+
+		// Queue the job if it's time to retry
+		if now.After(job.NextRetryAt) {
+			// Create a new job as a retry
+			retryJob := &Job{
+				ID:            uuid.New().String(),
+				Command:       job.Command,
+				Type:          JobTypeOnce,
+				Status:        JobStatusPending,
+				CreatedAt:     time.Now(),
+				RetryCount:    job.RetryCount + 1,
+				MaxRetries:    job.MaxRetries,
+				RetryDelay:    job.RetryDelay,
+				OriginalJobID: job.OriginalJobID,
+			}
+
+			if job.OriginalJobID == "" {
+				retryJob.OriginalJobID = job.ID
+			}
+
+			// Store the retry job
+			s.jobs[retryJob.ID] = retryJob
+
+			// Clear the NextRetryAt to prevent duplicate retries
+			job.NextRetryAt = time.Time{}
+
+			// Don't hold the mutex during queue operation
+			jobCopy := *retryJob
+			s.jobsMutex.Unlock()
+
+			fmt.Printf("Queueing retry job %s (attempt %d of %d)\n",
+				retryJob.ID, retryJob.RetryCount, retryJob.MaxRetries)
+			err := s.QueueJob(&jobCopy)
+			if err != nil {
+				fmt.Printf("Failed to queue retry job %s: %v\n", retryJob.ID, err)
+			}
+
+			s.jobsMutex.Lock()
+		}
+	}
 }
