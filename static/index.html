@@ -227,6 +227,15 @@
                         </select>
                     </div>
                     
+                    <div class="mb-4" id="runAtField">
+                        <label class="block text-gray-300 text-sm font-medium mb-2" for="runAt">
+                            Run at (leave empty for immediate execution)
+                        </label>
+                        <input class="w-full px-3 py-2 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                               id="runAt" type="datetime-local">
+                        <p class="text-xs text-gray-500 mt-1">Set a future time to run this one-time job</p>
+                    </div>
+                    
                     <div class="mb-4 hidden" id="scheduleField">
                         <label class="block text-gray-300 text-sm font-medium mb-2" for="schedule">
                             Cron Schedule
@@ -352,15 +361,19 @@
             
             document.getElementById('jobType').addEventListener('change', function() {
                 const scheduleField = document.getElementById('scheduleField');
+                const runAtField = document.getElementById('runAtField');
+                
                 if (this.value === 'cron') {
                     scheduleField.classList.remove('hidden');
                     document.getElementById('schedule').setAttribute('required', 'required');
+                    runAtField.classList.add('hidden');
                 } else {
                     scheduleField.classList.add('hidden');
                     document.getElementById('schedule').removeAttribute('required');
+                    runAtField.classList.remove('hidden');
                 }
             });
-            
+                        
             // Form submission
             document.getElementById('jobForm').addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -368,14 +381,19 @@
                 const command = document.getElementById('command').value;
                 const type = document.getElementById('jobType').value;
                 const schedule = document.getElementById('schedule').value;
+                const runAtInput = document.getElementById('runAt').value;
                 
-               
+                // Parse the runAt datetime if provided
+                let runAt = null;
+                if (runAtInput && type === 'once') {
+                    runAt = new Date(runAtInput).toISOString();
+                }
+                
                 if (type === 'cron' && !schedule) {
                     alert('Cron schedule is required for scheduled jobs');
                     return;
                 }
                 
-            
                 fetch('/api/jobs', {
                     method: 'POST',
                     headers: {
@@ -384,7 +402,8 @@
                     body: JSON.stringify({
                         command,
                         type,
-                        schedule: type === 'cron' ? schedule : ''
+                        schedule: type === 'cron' ? schedule : '',
+                        run_at: runAt
                     })
                 })
                 .then(response => {
@@ -399,6 +418,7 @@
                     console.log('Job created:', job);
                     document.getElementById('command').value = '';
                     document.getElementById('schedule').value = '';
+                    document.getElementById('runAt').value = '';
                     loadJobs();
                 })
                 .catch(error => {
@@ -456,7 +476,7 @@
                     console.error('Error loading jobs:', error);
                 });
             }
-            
+
             function viewJobDetails(jobId) {
                 fetch(`/api/jobs/${jobId}`)
                 .then(response => response.json())
@@ -466,6 +486,7 @@
                     let createdAt = new Date(job.created_at).toLocaleString();
                     let startedAt = job.started_at ? new Date(job.started_at).toLocaleString() : 'N/A';
                     let finishedAt = job.finished_at ? new Date(job.finished_at).toLocaleString() : 'N/A';
+                    let runAt = job.run_at ? new Date(job.run_at).toLocaleString() : 'Immediate';
                     
                     jobDetails.innerHTML = `
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -534,16 +555,6 @@
                     alert('Error loading job details');
                 });
             }
-            
-            document.getElementById('closeModal').addEventListener('click', function() {
-                document.getElementById('jobModal').classList.add('hidden');
-            });
-            
-            document.getElementById('jobModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    this.classList.add('hidden');
-                }
-            });
             
             function escapeHtml(unsafe) {
                 return unsafe
