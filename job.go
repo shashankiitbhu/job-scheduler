@@ -82,10 +82,15 @@ func (s *JobService) CreateJob(cmd string, jobType JobType, schedule string) (*J
 	s.jobs[job.ID] = job
 	s.jobsMutex.Unlock()
 
+	jobJSON, err := json.Marshal(job)
+    if err == nil {
+        ctx := context.Background()
+        s.redis.HSet(ctx, JobsDataKey, job.ID, jobJSON)
+    }
+
 	
 	if jobType == JobTypeOnce {
         if err := s.QueueJob(job); err != nil {
-            // Rollback memory map if queue fails
             s.jobsMutex.Lock()
             delete(s.jobs, job.ID)
             s.jobsMutex.Unlock()

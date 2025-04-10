@@ -67,12 +67,14 @@ func (s *Server) getJob(c *gin.Context) {
 
 type Server struct {
 	jobService *JobService
+	scheduler  *Scheduler  
 	port       int
 }
 
-func NewServer(jobService *JobService, port int) *Server {
+func NewServer(jobService *JobService, scheduler *Scheduler, port int) *Server {
 	return &Server{
 		jobService: jobService,
+		scheduler:  scheduler, 
 		port:       port,
 	}
 }
@@ -126,11 +128,16 @@ func (s *Server) createJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	if jobType == JobTypeCron && s.scheduler != nil {
+		if err := s.scheduler.ScheduleJob(job); err != nil {
+			fmt.Printf("Failed to schedule cron job: %v", err)
+		}
+	}
 	
 	c.JSON(http.StatusCreated, job)
 }
 
-// Add to your Server struct
 type JobStats struct {
     Pending   int `json:"pending"`
     Running   int `json:"running"`
@@ -138,7 +145,7 @@ type JobStats struct {
     Failed    int `json:"failed"`
 }
 
-// Add this handler method
+
 func (s *Server) getJobStats(c *gin.Context) {
     jobs := s.jobService.GetAllJobs()
     

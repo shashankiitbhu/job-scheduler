@@ -26,7 +26,7 @@ func main() {
 	redisClient := setupRedisClient(config)
 	defer redisClient.Close()
 
-	
+
 	
 	jobService := NewJobService(redisClient)
 
@@ -50,10 +50,10 @@ func main() {
 	} else {
 		
 		fmt.Println("Starting in API server mode...")
-		server := NewServer(jobService, config.HTTPPort)
-		
 		scheduler := NewScheduler(jobService)
 		scheduler.Start()
+		server := NewServer(jobService, scheduler, config.HTTPPort)
+		
 		defer scheduler.Stop()
 		
 		err := server.Start()
